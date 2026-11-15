@@ -2,7 +2,6 @@ name: Build mod
 
 on:
   push:
-  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -12,16 +11,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Find Gradle project
-        id: find
-        run: |
-          DIR=$(dirname "$(find . -name settings.gradle -not -path '*/.git/*' | head -n 1)")
-          if [ -z "$DIR" ] || [ "$DIR" = "." ] && [ ! -f settings.gradle ]; then
-            echo "No settings.gradle found"
-            exit 1
-          fi
-          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
-          echo "Gradle project found in: $DIR"
+      - name: Unzip project
+        run: unzip -q multiverse-stage1.zip -d project
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -34,12 +25,12 @@ jobs:
         with:
           gradle-version: '8.8'
 
-      - name: Build
-        working-directory: ${{ steps.find.outputs.dir }}
+      - name: Build JAR
+        working-directory: project
         run: gradle build --no-daemon
 
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
           name: multiverse-jar
-          path: ${{ steps.find.outputs.dir }}/build/libs/*.jar
+          path: project/build/libs/*.jar
