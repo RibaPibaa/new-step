@@ -1,0 +1,87 @@
+
+name: Build Sniper vs Runner
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "**.zip"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.8"
+
+      - name: Find and extract source project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BUILD_DIR=""
+
+          # Сначала ищем уже распакованный Gradle-проект
+          while IFS= read -r -d '' file; do
+            if [[ -f "$file/build.gradle" || -f "$file/build.gradle.kts" ]]; then
+              BUILD_DIR="$(dirname "$file")"
+              break
+            fi
+          done < <(find . -maxdepth 5 -type f \( -name build.gradle -o -name build.gradle.kts \) -print0)
+
+          # Если проекта нет, ищем ZIP и распаковываем
+          if [[ -z "$BUILD_DIR" ]]; then
+            ZIP_FILE="$(find . -maxdepth 4 -type f -iname '*.zip' ! -path './.git/*' | head -n 1)"
+
+            if [[ -z "$ZIP_FILE" ]]; then
+              echo "ERROR: Не найден ZIP с исходниками или build.gradle."
+              exit 1
+            fi
+
+            echo "Найден архив: $ZIP_FILE"
+            mkdir -p _source
+            unzip -q "$ZIP_FILE" -d _source
+
+            while IFS= read -r -d '' file; do
+              if [[ -f "$file/build.gradle" || -f "$file/build.gradle.kts" ]]; then
+                BUILD_DIR="$(dirname "$file")"
+                break
+              fi
+            done < <(find _source -maxdepth 7 -type f \( -name build.gradle -o -name build.gradle.kts \) -print0)
+          fi
+
+          if [[ -z "$BUILD_DIR" ]]; then
+            echo "ERROR: В исходниках не найден build.gradle или build.gradle.kts."
+            find . -maxdepth 5 -type f | sort
+            exit 1
+          fi
+
+          echo "Найден Gradle-проект: $BUILD_DIR"
+          echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
+
+      - name: Build mod
+        run: gradle -p "$BUILD_DIR" clean build --no-daemon
+
+      - name: Upload mod JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: sniper-vs-runner
+          path: |
+            ${{ env.BUILD_DIR }}/build/libs/*.jar
+          if-no-files-found: error
