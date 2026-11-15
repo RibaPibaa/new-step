@@ -2,11 +2,9 @@
 name: Build Sniper vs Runner
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, master]
-  pull_request:
-    branches: [main, master]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,57 +14,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # Сначала находим проект, чтобы проверить структуру репозитория
-      - name: Find Gradle project
-        shell: bash
+      - name: Download source project
+        env:
+          SOURCE_URL: REPLACE_WITH_YOUR_RELEASE_ZIP_URL
         run: |
           set -euo pipefail
+          curl -fL "$SOURCE_URL" -o source.zip
+          unzip -q source.zip -d source
 
-          BUILD_FILE="$(find . -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) \
-            -not -path '*/.gradle/*' \
-            -not -path '*/build/*' \
-            -print -quit)"
-
-          if [[ -z "$BUILD_FILE" ]]; then
-            echo "::error::Не найден build.gradle или build.gradle.kts."
-            echo "Проверь, что исходники мода загружены в репозиторий."
+      - name: Locate Gradle project
+        run: |
+          set -euo pipefail
+          BUILD_FILE="$(find source -type f -name build.gradle -not -path '*/build/*' -print -quit)"
+          if [ -z "$BUILD_FILE" ]; then
+            echo "::error::В архиве нет build.gradle"
             exit 1
           fi
+          echo "BUILD_DIR=$(dirname "$BUILD_FILE")" >> "$GITHUB_ENV"
 
-          BUILD_DIR="$(dirname "$BUILD_FILE")"
-
-          if [[ ! -f "$BUILD_DIR/settings.gradle" && ! -f "$BUILD_DIR/settings.gradle.kts" ]]; then
-            echo "::error::В папке проекта отсутствует settings.gradle."
-            exit 1
-          fi
-
-          echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
-          echo "Найден проект: $BUILD_DIR"
-
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle 8.8
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.8'
 
-      - name: Build mod
-        shell: bash
-        run: |
-          set -euo pipefail
-          gradle -p "$BUILD_DIR" clean build --no-daemon
+      - name: Build
+        run: gradle -p "$BUILD_DIR" clean build --no-daemon
 
-      - name: Upload mod JAR
+      - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
           name: Sniper-Vs-Runner
           path: ${{ env.BUILD_DIR }}/build/libs/*.jar
           if-no-files-found: error
-          retention-days: 14
