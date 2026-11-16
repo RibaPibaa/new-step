@@ -14,17 +14,14 @@ jobs:
       - name: Unzip project
         run: unzip -q multiverse-stage1.zip -d project
 
-      - name: Apply compatibility fixes
+      - name: Apply fixes
         working-directory: project
         run: |
-          # 1. RenderLayerParent lives in renderer.entity, not renderer.entity.layers
+          # Compile fixes
           sed -i 's#renderer.entity.layers.RenderLayerParent#renderer.entity.RenderLayerParent#' src/main/java/com/multiverse/mod/client/SuitLayer.java
-
-          # 2. Replace the DamageTypeTags check with a message-ID check
           sed -i '/import net.minecraft.world.damagesource.DamageTypeTags;/d' src/main/java/com/multiverse/mod/ServerEvents.java
           sed -i 's#event.getSource().is(DamageTypeTags.IS_FIRE)#(event.getSource().getMsgId().equals("inFire") || event.getSource().getMsgId().equals("onFire") || event.getSource().getMsgId().equals("lava"))#' src/main/java/com/multiverse/mod/ServerEvents.java
 
-          # 3. This Forge version uses ArmorItem.Type and per-type armor methods
           cat > src/main/java/com/multiverse/mod/Heroes.java <<'EOF'
           package com.multiverse.mod;
 
@@ -74,6 +71,12 @@ jobs:
               }
           }
           EOF
+
+          # Item models: use the vanilla iron armor icons until custom icons exist
+          mkdir -p src/main/resources/assets/multiverse/models/item
+          echo '{"parent": "minecraft:item/iron_chestplate"}' > src/main/resources/assets/multiverse/models/item/homelander_chestplate.json
+          echo '{"parent": "minecraft:item/iron_leggings"}'   > src/main/resources/assets/multiverse/models/item/homelander_leggings.json
+          echo '{"parent": "minecraft:item/iron_boots"}'      > src/main/resources/assets/multiverse/models/item/homelander_boots.json
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
